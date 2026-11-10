@@ -11,12 +11,24 @@ const fallbackProducts = [
 ];
 
 const formatPrice = (price) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(price);
+const formatDate = (date) => new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(date));
+
+const printInvoice = (order) => {
+  const invoiceWindow = window.open('', '_blank');
+  if (!invoiceWindow) return;
+  const rows = order.items.map((item) => `<tr><td>${item.productName}</td><td>${item.quantity}</td><td>${formatPrice(item.price)}</td><td>${formatPrice(item.price * item.quantity)}</td></tr>`).join('');
+  invoiceWindow.document.write(`<!doctype html><html><head><title>Invoice #${order.id} - Andras Food</title><style>body{font-family:Arial,sans-serif;color:#17352a;margin:40px auto;max-width:700px}h1{margin-bottom:4px}small{color:#657267}table{border-collapse:collapse;margin-top:30px;width:100%}td,th{border-bottom:1px solid #ddd;padding:10px;text-align:left}td:nth-child(n+2),th:nth-child(n+2){text-align:right}.summary{margin:25px 0 0 auto;max-width:280px}.summary div{display:flex;justify-content:space-between;padding:5px 0}.total{border-top:2px solid #17352a;font-weight:bold;margin-top:8px;padding-top:10px!important}@media print{body{margin:0}}</style></head><body><h1>Andras Food</h1><small>Invoice #${order.id} · ${formatDate(order.createdAt)}</small><p><strong>${order.customerName}</strong><br>${order.method === 'DELIVERY' ? `Antar ke: ${order.address}` : 'Ambil sendiri di Andras Food'}</p><table><thead><tr><th>Produk</th><th>Qty</th><th>Harga</th><th>Jumlah</th></tr></thead><tbody>${rows}</tbody></table><div class="summary"><div><span>Subtotal</span><strong>${formatPrice(order.subtotal)}</strong></div><div><span>Ongkir</span><strong>${formatPrice(order.deliveryFee)}</strong></div><div class="total"><span>Total</span><strong>${formatPrice(order.total)}</strong></div></div></body></html>`);
+  invoiceWindow.document.close();
+  invoiceWindow.focus();
+  invoiceWindow.print();
+};
 
 const emptyProduct = { name: '', description: '', price: 0, category: 'Makanan', emoji: '🍽️', stock: 0 };
 
 function AdminPanel({ onClose }) {
   const [password, setPassword] = useState('');
   const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [form, setForm] = useState(emptyProduct);
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState('Masukkan password admin untuk masuk.');
@@ -28,9 +40,11 @@ function AdminPanel({ onClose }) {
     headers: { 'Content-Type': 'application/json', 'x-admin-password': password, ...options.headers }
   });
 
-  const loadProducts = () => request('/api/admin/products').then(async (response) => {
-    if (!response.ok) throw new Error((await response.json()).message);
-    setProducts(await response.json());
+  const loadData = () => Promise.all([request('/api/admin/products'), request('/api/admin/orders')]).then(async ([productsResponse, ordersResponse]) => {
+    if (!productsResponse.ok) throw new Error((await productsResponse.json()).message);
+    if (!ordersResponse.ok) throw new Error((await ordersResponse.json()).message);
+    setProducts(await productsResponse.json());
+    setOrders(await ordersResponse.json());
     setIsLoggedIn(true);
     setMessage('');
   }).catch((error) => setMessage(error.message));
@@ -45,7 +59,7 @@ function AdminPanel({ onClose }) {
         setForm(emptyProduct);
         setEditingId(null);
         setMessage('Produk berhasil disimpan.');
-        loadProducts();
+        loadData();
       }).catch((error) => setMessage(error.message));
   };
 
@@ -54,9 +68,16 @@ function AdminPanel({ onClose }) {
     request(`/api/admin/products/${product.id}`, { method: 'DELETE' })
       .then((response) => {
         if (!response.ok) throw new Error('Produk gagal dihapus.');
-        loadProducts();
+        loadData();
       }).catch((error) => setMessage(error.message));
   };
+
+  const processOrder = (order) => request(`/api/admin/orders/${order.id}/process`, { method: 'POST' })
+    .then(async (response) => {
+      if (!response.ok) throw new Error((await response.json()).message);
+      setMessage(`Pesanan #${order.id} berhasil diproses dan stok sudah dikurangi.`);
+      loadData();
+    }).catch((error) => setMessage(error.message));
 
   const chooseImage = (event) => {
     const file = event.target.files[0];
@@ -70,9 +91,9 @@ function AdminPanel({ onClose }) {
 
   return <div className="admin-backdrop" onClick={onClose}><section className="admin-panel" onClick={(event) => event.stopPropagation()}>
     <div className="drawer-head"><div><p className="eyebrow">PENGELOLAAN TOKO</p><h2>Admin Andras Food</h2></div><button onClick={onClose} aria-label="Tutup admin">×</button></div>
-    {!isLoggedIn ? <form className="admin-login" onSubmit={(event) => { event.preventDefault(); loadProducts(); }}><p>{message}</p><label>Password admin<small>Masukkan password admin toko.</small><span className="password-field"><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoFocus /><button type="button" onClick={() => setShowPassword(!showPassword)}>{showPassword ? 'Sembunyikan' : 'Lihat'}</button></span></label><button className="primary-button" type="submit">Masuk <span>↗</span></button></form> : <>
+    {!isLoggedIn ? <form className="admin-login" onSubmit={(event) => { event.preventDefault(); loadData(); }}><p>{message}</p><label>Password admin<small>Masukkan password admin toko.</small><span className="password-field"><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoFocus /><button type="button" onClick={() => setShowPassword(!showPassword)}>{showPassword ? 'Sembunyikan' : 'Lihat'}</button></span></label><button className="primary-button" type="submit">Masuk <span>↗</span></button></form> : <>
       <form className="admin-form" onSubmit={submit}><h3>{editingId ? 'Edit produk' : 'Tambah produk'}</h3><label>Nama produk<small>Contoh: Nasi Ayam Geprek</small><input placeholder="Tulis nama menu" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></label><label>Deskripsi<small>Jelaskan isi atau ciri khas menu secara singkat.</small><textarea placeholder="Contoh: Ayam crispy dengan sambal bawang" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} required /></label><div className="admin-fields"><label>Harga<small>Dalam rupiah, tanpa titik.</small><input type="number" placeholder="15000" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} min="0" required /></label><label>Kategori<small>Contoh: Makanan atau Minuman</small><input placeholder="Makanan" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} required /></label><label>Emoji<small>Dipakai jika belum ada foto.</small><input placeholder="🍗" value={form.emoji} onChange={(event) => setForm({ ...form, emoji: event.target.value })} required /></label><label>Stok<small>Jumlah yang tersedia.</small><input type="number" placeholder="20" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} min="0" required /></label></div><label>Foto produk<small>Format JPG, PNG, atau WEBP. Maksimal 5 MB.</small><input type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseImage} /></label>{form.imageUrl && <img className="admin-image-preview" src={form.imageUrl} alt="Pratinjau produk" />}<div className="admin-actions"><button className="primary-button" type="submit">{editingId ? 'Simpan perubahan' : 'Tambah produk'}</button>{editingId && <button type="button" onClick={() => { setEditingId(null); setForm(emptyProduct); }}>Batal</button>}</div></form>
-      <p className="admin-message">{message}</p><div className="admin-products">{products.map((product) => <div className="admin-product" key={product.id}><span className="admin-emoji">{product.emoji}</span><div><strong>{product.name}</strong><small>{formatPrice(product.price)} · Stok: {product.stock}</small></div><button onClick={() => { setEditingId(product.id); setForm(product); }}>Edit</button><button className="danger-button" onClick={() => remove(product)}>Hapus</button></div>)}</div>
+      <p className="admin-message">{message}</p><h3 className="admin-section-title">Pesanan masuk</h3><div className="admin-orders">{orders.length ? orders.map((order) => <div className="admin-order" key={order.id}><div className="admin-order-head"><strong>#{order.id} · {order.customerName}</strong><span className={order.status === 'PROCESSED' ? 'order-done' : 'order-pending'}>{order.status === 'PROCESSED' ? 'Sudah diproses' : 'Menunggu proses'}</span></div><small>{formatDate(order.createdAt)} · {order.method === 'DELIVERY' ? `Antar: ${order.address} (+${formatPrice(order.deliveryFee)})` : 'Ambil sendiri'}</small><p>{order.items.map((item) => `${item.quantity}x ${item.productName}`).join(', ')}</p><div className="admin-order-foot"><strong>{formatPrice(order.total)}</strong><span>{order.status === 'PENDING' && <button className="primary-button" onClick={() => processOrder(order)}>Proses</button>}<button onClick={() => printInvoice(order)}>Cetak invoice</button></span></div></div>) : <p className="admin-message">Belum ada pesanan.</p>}</div><h3 className="admin-section-title">Produk</h3><div className="admin-products">{products.map((product) => <div className="admin-product" key={product.id}><span className="admin-emoji">{product.emoji}</span><div><strong>{product.name}</strong><small>{formatPrice(product.price)} · Stok: {product.stock}</small></div><button onClick={() => { setEditingId(product.id); setForm(product); }}>Edit</button><button className="danger-button" onClick={() => remove(product)}>Hapus</button></div>)}</div>
     </>}
   </section></div>;
 }
@@ -84,6 +105,9 @@ function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [apiMessage, setApiMessage] = useState('');
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [customerName, setCustomerName] = useState('');
+  const [orderMethod, setOrderMethod] = useState('PICKUP');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
 
   useEffect(() => {
     fetch('/api/products')
@@ -102,26 +126,47 @@ function App() {
   const visibleProducts = products.filter((product) => category === 'Semua' || product.category === category);
   const cartItems = Object.values(cart);
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  const totalPrice = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const deliveryFee = orderMethod === 'DELIVERY' ? 2000 : 0;
+  const totalPrice = subtotal + deliveryFee;
 
   const updateCart = (product, change) => {
     setCart((current) => {
       const nextQuantity = (current[product.id]?.quantity || 0) + change;
       const next = { ...current };
       if (nextQuantity <= 0) delete next[product.id];
-      else next[product.id] = { ...product, quantity: nextQuantity };
+      else if (nextQuantity <= Number(product.stock ?? Infinity)) next[product.id] = { ...product, quantity: nextQuantity };
       return next;
     });
   };
 
   const message = useMemo(() => {
     const lines = cartItems.map((item) => `${item.quantity}x ${item.name} - ${formatPrice(item.price * item.quantity)}`);
-    return `Halo Andras Food, saya mau pesan:\n\n${lines.join('\n')}\n\nTotal: ${formatPrice(totalPrice)}\n\nNama:\nAlamat / ambil sendiri:`;
-  }, [cartItems, totalPrice]);
+    return `Halo Andras Food, saya mau pesan:\n\nNama: ${customerName}\nMetode: ${orderMethod === 'DELIVERY' ? 'Diantar' : 'Ambil sendiri'}${orderMethod === 'DELIVERY' ? `\nAlamat: ${deliveryAddress}` : ''}\n\n${lines.join('\n')}\n\nSubtotal: ${formatPrice(subtotal)}\nOngkir: ${formatPrice(deliveryFee)}\nTotal: ${formatPrice(totalPrice)}`;
+  }, [cartItems, customerName, deliveryAddress, deliveryFee, orderMethod, subtotal, totalPrice]);
 
-  const checkout = () => {
+  const checkout = async () => {
     if (!cartItems.length) return;
-    window.open(`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    if (!customerName.trim()) return setApiMessage('Nama wajib diisi.');
+    if (orderMethod === 'DELIVERY' && (!deliveryAddress.trim() || !/citra\s+indah\s+city/i.test(deliveryAddress))) return setApiMessage('Pengantaran hanya tersedia di sekitar Citra Indah City.');
+    const whatsappWindow = window.open('', '_blank');
+    try {
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerName, method: orderMethod, address: deliveryAddress, items: cartItems.map((item) => ({ id: item.id, quantity: item.quantity })) })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      setCart({});
+      setIsCartOpen(false);
+      const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+      if (whatsappWindow) whatsappWindow.location.href = whatsappUrl;
+      else window.location.href = whatsappUrl;
+    } catch (error) {
+      whatsappWindow?.close();
+      setApiMessage(error.message);
+    }
   };
 
   return (
@@ -155,7 +200,7 @@ function App() {
 
       <footer><span>© 2026 Andras Food</span><span>Rasa yang bikin betah.</span></footer>
       {isAdminOpen && <AdminPanel onClose={() => setIsAdminOpen(false)} />}
-      {isCartOpen && <div className="cart-backdrop" onClick={() => setIsCartOpen(false)}><aside className="cart-drawer" onClick={(event) => event.stopPropagation()}><div className="drawer-head"><div><p className="eyebrow">PESANANMU</p><h2>Keranjang</h2></div><button onClick={() => setIsCartOpen(false)} aria-label="Tutup keranjang">×</button></div>{cartItems.length ? <><div className="cart-list">{cartItems.map((item) => <div className="cart-row" key={item.id}><span className="cart-emoji">{item.emoji}</span><div><h3>{item.name}</h3><p>{formatPrice(item.price)}</p></div><div className="quantity"><button onClick={() => updateCart(item, -1)}>-</button><b>{item.quantity}</b><button onClick={() => updateCart(item, 1)}>+</button></div></div>)}</div><div className="cart-total"><span>Total</span><strong>{formatPrice(totalPrice)}</strong></div><button className="whatsapp-button" onClick={checkout}>Pesan via WhatsApp <span>↗</span></button></> : <div className="empty-cart"><span>◎</span><p>Keranjangmu masih kosong.</p><a href="#menu" onClick={() => setIsCartOpen(false)}>Lihat menu</a></div>}</aside></div>}
+      {isCartOpen && <div className="cart-backdrop" onClick={() => setIsCartOpen(false)}><aside className="cart-drawer" onClick={(event) => event.stopPropagation()}><div className="drawer-head"><div><p className="eyebrow">PESANANMU</p><h2>Keranjang</h2></div><button onClick={() => setIsCartOpen(false)} aria-label="Tutup keranjang">×</button></div>{cartItems.length ? <><div className="cart-list">{cartItems.map((item) => <div className="cart-row" key={item.id}><span className="cart-emoji">{item.emoji}</span><div><h3>{item.name}</h3><p>{formatPrice(item.price)}</p></div><div className="quantity"><button onClick={() => updateCart(item, -1)}>-</button><b>{item.quantity}</b><button onClick={() => updateCart(item, 1)}>+</button></div></div>)}</div><div className="order-form"><label>Nama kamu<input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Nama pemesan" /></label><label>Pesanan diambil dengan<select value={orderMethod} onChange={(event) => setOrderMethod(event.target.value)}><option value="PICKUP">Ambil sendiri</option><option value="DELIVERY">Diantar</option></select></label>{orderMethod === 'DELIVERY' && <label>Alamat pengantaran<small>Hanya sekitar Citra Indah City · Ongkir Rp2.000</small><textarea value={deliveryAddress} onChange={(event) => setDeliveryAddress(event.target.value)} placeholder="Contoh: Cluster ..., Citra Indah City" /></label>}</div>{apiMessage && <div className="api-note">{apiMessage}</div>}<div className="cart-total"><span>Subtotal</span><strong>{formatPrice(subtotal)}</strong></div>{orderMethod === 'DELIVERY' && <div className="cart-total cart-fee"><span>Ongkir</span><strong>{formatPrice(deliveryFee)}</strong></div>}<div className="cart-total"><span>Total</span><strong>{formatPrice(totalPrice)}</strong></div><button className="whatsapp-button" onClick={checkout}>Simpan & pesan via WhatsApp <span>↗</span></button></> : <div className="empty-cart"><span>◎</span><p>Keranjangmu masih kosong.</p><a href="#menu" onClick={() => setIsCartOpen(false)}>Lihat menu</a></div>}</aside></div>}
     </>
   );
 }

@@ -1,0 +1,5 @@
+{
+  "buildCommand": "DATABASE_URL=\"$POSTGRES_URL_NON_POOLING\" npx prisma db push && DATABASE_URL=\"$POSTGRES_URL_NON_POOLING\" npx prisma db seed && npm run build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "npm install"
+}

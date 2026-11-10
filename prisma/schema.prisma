@@ -7,6 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum OrderMethod {
+  DELIVERY
+  PICKUP
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSED
+}
+
 model Product {
   id          Int      @id @default(autoincrement())
   name        String   @unique @db.VarChar(120)
@@ -20,4 +30,33 @@ model Product {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("products")
+}
+
+model Order {
+  id            Int         @id @default(autoincrement())
+  customerName  String      @db.VarChar(120)
+  method        OrderMethod
+  address       String?     @db.VarChar(240)
+  deliveryFee   Int         @default(0)
+  subtotal      Int
+  total         Int
+  status        OrderStatus @default(PENDING)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  processedAt   DateTime?   @map("processed_at")
+  items         OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id         Int     @id @default(autoincrement())
+  orderId    Int     @map("order_id")
+  productId  Int     @map("product_id")
+  productName String @db.VarChar(120)
+  price      Int
+  quantity   Int
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_items")
 }

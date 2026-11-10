@@ -31,7 +31,33 @@ npm run dev
 Klik tombol `Admin` di header website, lalu masukkan password dari `ADMIN_PASSWORD` di `.env`.
 Panel admin dapat menambah produk, mengubah harga dan stok, serta menghapus produk. Produk dengan stok `0` otomatis tidak tampil di katalog.
 
+## Alur pesanan
+
+- Pelanggan mengisi nama dan memilih `Ambil sendiri` atau `Diantar` dari keranjang.
+- Pengantaran hanya menerima alamat sekitar `Citra Indah City` dan otomatis menambah ongkir Rp2.000.
+- Setelah dikirim ke WhatsApp, pesanan tersimpan sebagai pesanan menunggu proses. Stok belum dipotong pada tahap ini.
+- Setelah pembayaran dikonfirmasi melalui WhatsApp, admin membuka panel `Admin`, mengecek pesanan, lalu klik `Proses`. Pada tahap ini stok dipotong secara atomik.
+- Invoice dapat dicetak dari pesanan. Pada dialog cetak browser, pilih `Save as PDF` untuk menyimpan invoice sebagai PDF.
+
+Jika schema database sudah ada sebelum fitur pesanan ditambahkan, jalankan:
+
+```bash
+npm run db:push
+```
+
 Frontend berjalan di `http://localhost:5173`, API di `http://localhost:3001`.
+
+## Deploy ke Vercel
+
+Database PostgreSQL lokal tidak dapat diakses dari Vercel. Gunakan PostgreSQL online seperti Neon, lalu tambahkan environment variables berikut di project Vercel:
+
+```text
+DATABASE_URL=URL_POSTGRESQL_ONLINE
+ADMIN_PASSWORD=password-admin
+WHATSAPP_NUMBER=nomor-whatsapp
+```
+
+Setelah itu jalankan `prisma db push` dan `prisma db seed` menggunakan `DATABASE_URL` online, lalu deploy ulang. Backend sudah tersedia sebagai Vercel Function pada `/api`.
 
 ## Prisma Studio
 
