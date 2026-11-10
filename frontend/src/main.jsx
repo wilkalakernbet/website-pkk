@@ -121,7 +121,7 @@ function App() {
   if (window.location.pathname === '/admin') return <AdminPanel />;
 
   useEffect(() => {
-    fetch('/api/products')
+    fetch('/api/products', { cache: 'no-store' })
       .then((response) => {
         if (!response.ok) throw new Error('API belum siap');
         return response.json();

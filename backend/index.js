@@ -24,6 +24,7 @@ app.get(['/api/health', '/health'], async (_req, res) => {
 
 app.get(['/api/products', '/products'], async (_req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     const products = await prisma.product.findMany({
       where: { isAvailable: true, stock: { gt: 0 } },
       orderBy: [{ category: 'asc' }, { id: 'asc' }],
@@ -117,6 +118,7 @@ app.post(['/api/admin/orders/:id/process', '/admin/orders/:id/process'], require
 
 app.get(['/api/admin/products', '/admin/products'], requireAdmin, async (_req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     const products = await prisma.product.findMany({ orderBy: { id: 'asc' } });
     res.json(products);
   } catch (error) {
@@ -128,8 +130,12 @@ app.get(['/api/admin/products', '/admin/products'], requireAdmin, async (_req, r
 app.post(['/api/admin/products', '/admin/products'], requireAdmin, async (req, res) => {
   try {
     const { name, description, price, category, emoji, stock, imageUrl } = req.body;
+    const numericStock = Number(stock);
+    if (!name || !description || !category || !emoji || !Number.isInteger(numericStock) || numericStock < 0) {
+      return res.status(400).json({ message: 'Data produk atau stok tidak valid.' });
+    }
     const product = await prisma.product.create({
-      data: { name, description, price: Number(price), category, emoji, stock: Number(stock), imageUrl: imageUrl || null }
+      data: { name, description, price: Number(price), category, emoji, stock: numericStock, imageUrl: imageUrl || null, isAvailable: numericStock > 0 }
     });
     res.status(201).json(product);
   } catch (error) {
