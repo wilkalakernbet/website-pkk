@@ -25,7 +25,7 @@ const printInvoice = (order) => {
 
 const emptyProduct = { name: '', description: '', price: 0, category: 'Makanan', emoji: '🍽️', stock: 0 };
 
-function AdminPanel({ onClose }) {
+function AdminPanel() {
   const [password, setPassword] = useState('');
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -34,6 +34,8 @@ function AdminPanel({ onClose }) {
   const [message, setMessage] = useState('Masukkan password admin untuk masuk.');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderDate, setOrderDate] = useState('');
 
   const request = (url, options = {}) => fetch(url, {
     ...options,
@@ -89,13 +91,21 @@ function AdminPanel({ onClose }) {
     reader.readAsDataURL(file);
   };
 
-  return <div className="admin-backdrop" onClick={onClose}><section className="admin-panel" onClick={(event) => event.stopPropagation()}>
-    <div className="drawer-head"><div><p className="eyebrow">PENGELOLAAN TOKO</p><h2>Admin Andras Food</h2></div><button onClick={onClose} aria-label="Tutup admin">×</button></div>
+  const filteredOrders = orders.filter((order) => {
+    const search = orderSearch.trim().toLowerCase();
+    const searchable = [order.customerName, order.address || '', ...order.items.map((item) => item.productName)].join(' ').toLowerCase();
+    const matchesSearch = !search || searchable.includes(search);
+    const matchesDate = !orderDate || new Date(order.createdAt).toISOString().slice(0, 10) === orderDate;
+    return matchesSearch && matchesDate;
+  });
+
+  return <main className="admin-page"><header className="admin-page-header"><a className="brand" href="/"><span className="brand-mark">A</span><span>Andras <em>Food</em></span></a><a className="admin-back-link" href="/">Kembali ke toko</a></header><section className="admin-panel">
+    <div className="admin-page-title"><div><p className="eyebrow">PENGELOLAAN TOKO</p><h1>Admin Andras Food</h1></div></div>
     {!isLoggedIn ? <form className="admin-login" onSubmit={(event) => { event.preventDefault(); loadData(); }}><p>{message}</p><label>Password admin<small>Masukkan password admin toko.</small><span className="password-field"><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoFocus /><button type="button" onClick={() => setShowPassword(!showPassword)}>{showPassword ? 'Sembunyikan' : 'Lihat'}</button></span></label><button className="primary-button" type="submit">Masuk <span>↗</span></button></form> : <>
       <form className="admin-form" onSubmit={submit}><h3>{editingId ? 'Edit produk' : 'Tambah produk'}</h3><label>Nama produk<small>Contoh: Nasi Ayam Geprek</small><input placeholder="Tulis nama menu" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></label><label>Deskripsi<small>Jelaskan isi atau ciri khas menu secara singkat.</small><textarea placeholder="Contoh: Ayam crispy dengan sambal bawang" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} required /></label><div className="admin-fields"><label>Harga<small>Dalam rupiah, tanpa titik.</small><input type="number" placeholder="15000" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} min="0" required /></label><label>Kategori<small>Contoh: Makanan atau Minuman</small><input placeholder="Makanan" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} required /></label><label>Emoji<small>Dipakai jika belum ada foto.</small><input placeholder="🍗" value={form.emoji} onChange={(event) => setForm({ ...form, emoji: event.target.value })} required /></label><label>Stok<small>Jumlah yang tersedia.</small><input type="number" placeholder="20" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} min="0" required /></label></div><label>Foto produk<small>Format JPG, PNG, atau WEBP. Maksimal 5 MB.</small><input type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseImage} /></label>{form.imageUrl && <img className="admin-image-preview" src={form.imageUrl} alt="Pratinjau produk" />}<div className="admin-actions"><button className="primary-button" type="submit">{editingId ? 'Simpan perubahan' : 'Tambah produk'}</button>{editingId && <button type="button" onClick={() => { setEditingId(null); setForm(emptyProduct); }}>Batal</button>}</div></form>
-      <p className="admin-message">{message}</p><h3 className="admin-section-title">Pesanan masuk</h3><div className="admin-orders">{orders.length ? orders.map((order) => <div className="admin-order" key={order.id}><div className="admin-order-head"><strong>#{order.id} · {order.customerName}</strong><span className={order.status === 'PROCESSED' ? 'order-done' : 'order-pending'}>{order.status === 'PROCESSED' ? 'Sudah diproses' : 'Menunggu proses'}</span></div><small>{formatDate(order.createdAt)} · {order.method === 'DELIVERY' ? `Antar: ${order.address} (+${formatPrice(order.deliveryFee)})` : 'Ambil sendiri'}</small><p>{order.items.map((item) => `${item.quantity}x ${item.productName}`).join(', ')}</p><div className="admin-order-foot"><strong>{formatPrice(order.total)}</strong><span>{order.status === 'PENDING' && <button className="primary-button" onClick={() => processOrder(order)}>Proses</button>}<button onClick={() => printInvoice(order)}>Cetak invoice</button></span></div></div>) : <p className="admin-message">Belum ada pesanan.</p>}</div><h3 className="admin-section-title">Produk</h3><div className="admin-products">{products.map((product) => <div className="admin-product" key={product.id}><span className="admin-emoji">{product.emoji}</span><div><strong>{product.name}</strong><small>{formatPrice(product.price)} · Stok: {product.stock}</small></div><button onClick={() => { setEditingId(product.id); setForm(product); }}>Edit</button><button className="danger-button" onClick={() => remove(product)}>Hapus</button></div>)}</div>
+      <p className="admin-message">{message}</p><h3 className="admin-section-title">Pesanan masuk</h3><div className="order-filters"><input value={orderSearch} onChange={(event) => setOrderSearch(event.target.value)} placeholder="Cari nama, alamat, atau menu..." /><label>Tanggal<input type="date" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} /></label>{(orderSearch || orderDate) && <button onClick={() => { setOrderSearch(''); setOrderDate(''); }}>Reset</button>}</div><div className="admin-orders">{filteredOrders.length ? filteredOrders.map((order) => <div className="admin-order" key={order.id}><div className="admin-order-head"><strong>#{order.id} · {order.customerName}</strong><span className={order.status === 'PROCESSED' ? 'order-done' : 'order-pending'}>{order.status === 'PROCESSED' ? 'Sudah diproses' : 'Menunggu proses'}</span></div><small>{formatDate(order.createdAt)} · {order.method === 'DELIVERY' ? `Antar: ${order.address} (+${formatPrice(order.deliveryFee)})` : 'Ambil sendiri'}</small><p>{order.items.map((item) => `${item.quantity}x ${item.productName}`).join(', ')}</p><div className="admin-order-foot"><strong>{formatPrice(order.total)}</strong><span>{order.status === 'PENDING' && <button className="primary-button" onClick={() => processOrder(order)}>Proses</button>}<button onClick={() => printInvoice(order)}>Cetak invoice</button></span></div></div>) : <p className="admin-message">Tidak ada pesanan yang cocok.</p>}</div><h3 className="admin-section-title">Produk</h3><div className="admin-products">{products.map((product) => <div className="admin-product" key={product.id}><span className="admin-emoji">{product.emoji}</span><div><strong>{product.name}</strong><small>{formatPrice(product.price)} · Stok: {product.stock}</small></div><button onClick={() => { setEditingId(product.id); setForm(product); }}>Edit</button><button className="danger-button" onClick={() => remove(product)}>Hapus</button></div>)}</div>
     </>}
-  </section></div>;
+  </section></main>;
 }
 
 function App() {
@@ -104,10 +114,11 @@ function App() {
   const [category, setCategory] = useState('Semua');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [apiMessage, setApiMessage] = useState('');
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [orderMethod, setOrderMethod] = useState('PICKUP');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+
+  if (window.location.pathname === '/admin') return <AdminPanel />;
 
   useEffect(() => {
     fetch('/api/products')
@@ -174,7 +185,7 @@ function App() {
       <header className="site-header">
         <a className="brand" href="#beranda"><span className="brand-mark">A</span><span>Andras <em>Food</em></span></a>
         <nav><a href="#menu">Menu</a><a href="#cerita">Cerita Kami</a><a href="#pesan">Cara Pesan</a><a href="#kontak">Kontak</a></nav>
-        <div className="header-actions"><button className="admin-button" onClick={() => setIsAdminOpen(true)}>Admin</button><button className="cart-button" onClick={() => setIsCartOpen(true)} aria-label="Buka keranjang">Keranjang <b>{totalItems}</b></button></div>
+        <div className="header-actions"><a className="admin-button" href="/admin">Admin</a><button className="cart-button" onClick={() => setIsCartOpen(true)} aria-label="Buka keranjang">Keranjang <b>{totalItems}</b></button></div>
       </header>
 
       <main>
@@ -199,7 +210,6 @@ function App() {
       </main>
 
       <footer><span>© 2026 Andras Food</span><span>Rasa yang bikin betah.</span></footer>
-      {isAdminOpen && <AdminPanel onClose={() => setIsAdminOpen(false)} />}
       {isCartOpen && <div className="cart-backdrop" onClick={() => setIsCartOpen(false)}><aside className="cart-drawer" onClick={(event) => event.stopPropagation()}><div className="drawer-head"><div><p className="eyebrow">PESANANMU</p><h2>Keranjang</h2></div><button onClick={() => setIsCartOpen(false)} aria-label="Tutup keranjang">×</button></div>{cartItems.length ? <><div className="cart-list">{cartItems.map((item) => <div className="cart-row" key={item.id}><span className="cart-emoji">{item.emoji}</span><div><h3>{item.name}</h3><p>{formatPrice(item.price)}</p></div><div className="quantity"><button onClick={() => updateCart(item, -1)}>-</button><b>{item.quantity}</b><button onClick={() => updateCart(item, 1)}>+</button></div></div>)}</div><div className="order-form"><label>Nama kamu<input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Nama pemesan" /></label><label>Pesanan diambil dengan<select value={orderMethod} onChange={(event) => setOrderMethod(event.target.value)}><option value="PICKUP">Ambil sendiri</option><option value="DELIVERY">Diantar</option></select></label>{orderMethod === 'DELIVERY' && <label>Alamat pengantaran<small>Hanya sekitar Citra Indah City · Ongkir Rp2.000</small><textarea value={deliveryAddress} onChange={(event) => setDeliveryAddress(event.target.value)} placeholder="Contoh: Cluster ..., Citra Indah City" /></label>}</div>{apiMessage && <div className="api-note">{apiMessage}</div>}<div className="cart-total"><span>Subtotal</span><strong>{formatPrice(subtotal)}</strong></div>{orderMethod === 'DELIVERY' && <div className="cart-total cart-fee"><span>Ongkir</span><strong>{formatPrice(deliveryFee)}</strong></div>}<div className="cart-total"><span>Total</span><strong>{formatPrice(totalPrice)}</strong></div><button className="whatsapp-button" onClick={checkout}>Simpan & pesan via WhatsApp <span>↗</span></button></> : <div className="empty-cart"><span>◎</span><p>Keranjangmu masih kosong.</p><a href="#menu" onClick={() => setIsCartOpen(false)}>Lihat menu</a></div>}</aside></div>}
     </>
   );
